@@ -1,0 +1,790 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Street Furniture Model Catalog + Network (GLB + Cloud BG)</title>
+
+  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#0b0d14;
+      --panel:#111526;
+      --panel2:#0f1322;
+      --text:#e8ecff;
+      --muted:#a8b0d6;
+      --line:rgba(232,236,255,.10);
+      --chip:rgba(120,160,255,.18);
+      --accent:#7aa1ff;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+
+    /* ====== BACKGROUND (รวมตามที่ขอ) ====== */
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      color: var(--text);
+      background: url("bg-cloud.png") center / cover no-repeat fixed; /* ใช้ภาพเป็นพื้นหลัง */
+      overflow-x:hidden;
+      position:relative;
+    }
+
+    /* ชั้นเบลอ + ดรอปแสงให้เหมือนภาพ soft (อยู่หลัง UI) */
+    body::before{
+      content:"";
+      position: fixed;
+      inset: 0;
+      background: url("bg-cloud.png") center / cover no-repeat fixed;
+      filter: blur(10px) saturate(1.05);
+      transform: scale(1.05);
+      opacity: .9;
+      z-index: 0;
+      pointer-events:none;
+    }
+
+    /* ชั้นเมฆด้านล่าง (ตามที่ให้มา) */
+    body::after{
+      content:'';
+      position:fixed;
+      left:0; right:0; bottom:0;
+      height:180px;
+      background:url("images/clouds.png") center bottom/cover no-repeat;
+      z-index:9000;
+      pointer-events:none;
+    }
+
+    /* ชั้น overlay ให้การ์ด/ตัวอักษรอ่านง่าย (ใช้ element เพิ่ม เพราะ body::after ถูกใช้เป็นเมฆล่างแล้ว) */
+    .bgDim{
+      position:fixed;
+      inset:0;
+      background: linear-gradient(180deg, rgba(11,13,20,.45), rgba(11,13,20,.78));
+      z-index: 1;
+      pointer-events:none;
+    }
+
+    /* ====== LAYOUT ====== */
+    a{color:inherit}
+    .app{
+      position:relative;
+      z-index:2;              /* ให้อยู่เหนือ bgDim และ body::before */
+      display:grid;
+      grid-template-columns: 300px 1fr;
+      min-height:100vh;
+    }
+    .sidebar{
+      border-right:1px solid var(--line);
+      background: linear-gradient(180deg, rgba(17,21,38,.72), rgba(17,21,38,.46));
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      position:sticky;
+      top:0;
+      height:100vh;
+      padding:18px 14px;
+      overflow:auto;
+    }
+    .brand{
+      display:flex; align-items:center; justify-content:space-between;
+      gap:10px;
+      padding:10px 12px;
+      border:1px solid var(--line);
+      border-radius:16px;
+      background: rgba(15,19,34,.55);
+      margin-bottom:12px;
+    }
+    .brand h1{font-size:14px; margin:0; line-height:1.2;}
+    .brand small{color:var(--muted)}
+    .tabs{display:flex; gap:8px; margin:12px 0;}
+    .tabbtn{
+      flex:1;
+      padding:10px 10px;
+      border-radius:12px;
+      border:1px solid var(--line);
+      background: rgba(15,19,34,.45);
+      color:var(--text);
+      cursor:pointer;
+      font-weight:700;
+      font-size:12px;
+    }
+    .tabbtn.active{
+      background: rgba(122,161,255,.18);
+      border-color: rgba(122,161,255,.35);
+    }
+    .meta{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:10px;
+      margin:10px 0 14px;
+    }
+    .kpi{
+      border:1px solid var(--line);
+      background: rgba(15,19,34,.45);
+      border-radius:14px;
+      padding:10px 10px;
+    }
+    .kpi .label{color:var(--muted); font-size:11px}
+    .kpi .value{font-size:18px; font-weight:800; margin-top:4px}
+
+    .search{
+      display:flex; gap:8px; align-items:center;
+      margin:10px 0 10px;
+      padding:10px 12px;
+      border:1px solid var(--line);
+      border-radius:14px;
+      background: rgba(15,19,34,.45);
+    }
+    .search input{
+      width:100%;
+      background:transparent;
+      border:0;
+      outline:none;
+      color:var(--text);
+      font-size:12px;
+    }
+    .nav{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      padding:0;
+      margin:0;
+      list-style:none;
+    }
+    .nav a{
+      text-decoration:none;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding:10px 10px;
+      border-radius:12px;
+      border:1px solid transparent;
+      color:var(--text);
+    }
+    .nav a:hover{
+      background: rgba(255,255,255,.04);
+      border-color: var(--line);
+    }
+    .pill{
+      font-size:11px;
+      color:var(--text);
+      background: var(--chip);
+      border:1px solid rgba(122,161,255,.25);
+      padding:2px 8px;
+      border-radius:999px;
+      white-space:nowrap;
+    }
+
+    .main{
+      padding:18px 18px 220px; /* เผื่อพื้นที่เมฆล่าง 180px */
+      overflow:auto;
+    }
+    .topbar{
+      display:flex;
+      gap:12px;
+      align-items:flex-end;
+      justify-content:space-between;
+      margin-bottom:14px;
+      flex-wrap:wrap;
+    }
+    .titleblock h2{margin:0; font-size:18px;}
+    .titleblock p{
+      margin:4px 0 0;
+      color:var(--muted);
+      font-size:12px;
+      max-width:72ch;
+    }
+    .controls{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
+    .btn{
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid var(--line);
+      background: rgba(15,19,34,.45);
+      color:var(--text);
+      cursor:pointer;
+      font-weight:800;
+      font-size:12px;
+    }
+    .btn.primary{
+      background: rgba(122,161,255,.18);
+      border-color: rgba(122,161,255,.35);
+    }
+
+    .panel{
+      border:1px solid var(--line);
+      border-radius:18px;
+      background: rgba(15,19,34,.45);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      overflow:hidden;
+      margin-bottom:14px;
+    }
+    .panelHeader{
+      padding:12px 14px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      border-bottom:1px solid var(--line);
+      background: rgba(17,21,38,.30);
+    }
+    .panelHeader strong{font-size:13px}
+    .panelBody{padding:14px}
+
+    .grid{
+      display:grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap:12px;
+    }
+    .card{
+      grid-column: span 4;
+      border:1px solid var(--line);
+      background: rgba(17,21,38,.30);
+      border-radius:16px;
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+      min-height:280px;
+    }
+    .thumb{
+      position:relative;
+      aspect-ratio: 16/10;
+      background: linear-gradient(135deg, rgba(122,161,255,.10), rgba(103,232,249,.08));
+      border-bottom:1px solid var(--line);
+    }
+    model-viewer{
+      width:100%;
+      height:100%;
+      display:block;
+      background:transparent;
+    }
+    .fallback{
+      position:absolute; inset:0; display:none;
+      align-items:center; justify-content:center; padding:12px; text-align:center;
+      color:rgba(232,236,255,.75); font-size:12px; line-height:1.35;
+    }
+    .cardBody{
+      padding:12px;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      flex:1;
+    }
+    .row{display:flex; align-items:center; justify-content:space-between; gap:8px;}
+    .metaLine{color:var(--muted); font-size:12px; word-break:break-word;}
+    .selectBtn{
+      width:100%;
+      padding:10px 10px;
+      border-radius:12px;
+      border:1px solid rgba(122,161,255,.35);
+      background: rgba(122,161,255,.14);
+      color:var(--text);
+      cursor:pointer;
+      font-weight:900;
+    }
+    .networkWrap{
+      display:none;
+      height: calc(100vh - 130px);
+      min-height:520px;
+    }
+    canvas{
+      width:100%;
+      height:100%;
+      display:block;
+      background: rgba(17,21,38,.18);
+      border-radius:16px;
+      border:1px solid var(--line);
+    }
+    .tooltip{
+      position:fixed;
+      pointer-events:none;
+      background: rgba(15,19,34,.92);
+      border:1px solid rgba(122,161,255,.35);
+      color:var(--text);
+      padding:8px 10px;
+      border-radius:12px;
+      font-size:12px;
+      max-width:280px;
+      display:none;
+      z-index:9999;
+    }
+
+    @media (max-width: 980px){
+      .app{grid-template-columns: 1fr}
+      .sidebar{position:relative; height:auto}
+      .card{grid-column: span 6;}
+      .networkWrap{height:520px}
+    }
+    @media (max-width: 640px){
+      .card{grid-column: span 12;}
+    }
+  </style>
+</head>
+
+<body>
+  <div class="bgDim" aria-hidden="true"></div>
+
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div>
+          <h1>Model Selection Dashboard</h1>
+          <small>GLB viewer • 100 participants</small>
+        </div>
+        <span class="pill">GLB</span>
+      </div>
+
+      <div class="tabs">
+        <button class="tabbtn active" id="tabCatalog">Catalog</button>
+        <button class="tabbtn" id="tabNetwork">Network</button>
+      </div>
+
+      <div class="meta">
+        <div class="kpi">
+          <div class="label">Participants</div>
+          <div class="value" id="kpiParticipants">100</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Total selections</div>
+          <div class="value" id="kpiSelections">—</div>
+        </div>
+      </div>
+
+      <div class="search">
+        <span style="opacity:.75">🔎</span>
+        <input id="searchInput" placeholder="Search categories… (e.g., Seating, Planter)" />
+      </div>
+
+      <ul class="nav" id="navList"></ul>
+
+      <div style="margin-top:14px; color:var(--muted); font-size:12px; line-height:1.45;">
+        <b style="color:var(--text)">GLB Source:</b>
+        <span class="pill" style="margin-left:6px;">Supabase Storage</span>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div class="titleblock">
+          <h2>Street Furniture Categories (01–18)</h2>
+          <p>
+            พื้นหลังใช้ภาพเมฆ + overlay อ่านง่าย + เมฆล่าง (images/clouds.png) + การ์ดแต่ละใบแสดง .glb หมุน/ซูมได้
+          </p>
+        </div>
+        <div class="controls">
+          <button class="btn" id="btnRegenerate">Regenerate mock data</button>
+          <button class="btn primary" id="btnExportCSV">Export Selections CSV</button>
+        </div>
+      </div>
+
+      <section id="catalogWrap"></section>
+
+      <section class="panel networkWrap" id="networkWrap">
+        <div class="panelHeader">
+          <strong>Network View (Category Co-selection)</strong>
+          <span class="pill">nodes = categories • edges = co-selected</span>
+        </div>
+        <div class="panelBody" style="height:100%;">
+          <canvas id="netCanvas"></canvas>
+        </div>
+      </section>
+
+      <div class="tooltip" id="tip"></div>
+    </main>
+  </div>
+
+<script>
+  /** Categories (01–18) */
+  const GROUPS = {
+    "01 Seating Module": ["01","02","03"],
+    "02 Shade Structure": ["01","02","03"],
+    "03 Waste Station": ["01","02","03"],
+    "04 Scooter Parking and bike": ["01","02","03"],
+    "05 Community Notice Board": ["01","02","03"],
+    "06 Directional Signpost System": ["01","02","03"],
+    "07 Area Map “You Are Here” Totem": ["01","02","03"],
+    "08 Bollard Set": ["01","02","03"],
+    "09 Handrail": ["01","02","03"],
+    "10 Pedestrian Light Pole": ["01","02","03"],
+    "11 Smart Pole (Modular)": ["01","02","03"],
+    "12 Planter": ["01","02","03"],
+    "13 Public Art and Landmark Element": ["01","02","03"],
+    "14 Pavilion": ["01","02","03"],
+    "15 Outdoor Table": ["01","02","03"],
+    "16 Drinking Water Refill Station": ["01","02","03"],
+    "17 bike rack": ["01","02","03"],
+    "18 Mailbox": ["01","02","03"]
+  };
+  const CATEGORY_ORDER = Object.keys(GROUPS);
+
+  /** GLB base folder (Supabase) */
+  // แก้ไข: ใช้ URL จาก Supabase Storage
+  const GLB_BASE = "https://edhwbkcmxgisqnznryhp.supabase.co/storage/v1/object/public/models/Models/";
+
+  function glbUrl(categoryName, variant){
+    // Example: .../Models/01%20Seating%20Module/01.glb
+    return GLB_BASE + encodeURIComponent(categoryName) + "/" + encodeURIComponent(variant) + ".glb";
+  }
+
+  /** Mock data (100 participants) */
+  const PARTICIPANTS = 100;
+  function randInt(min, max){ return Math.floor(Math.random()*(max-min+1))+min; }
+  function weightedCategoryPick(){
+    const weights = CATEGORY_ORDER.map((_,i)=>1/Math.pow(i+1,0.6));
+    const total = weights.reduce((a,b)=>a+b,0);
+    let r = Math.random()*total;
+    for(let i=0;i<weights.length;i++){
+      r -= weights[i];
+      if(r<=0) return CATEGORY_ORDER[i];
+    }
+    return CATEGORY_ORDER[CATEGORY_ORDER.length-1];
+  }
+
+  let selections = [];
+  let catCounts = new Map();
+  let modelCounts = new Map();
+  let coMatrix = new Map();
+
+  function resetStats(){
+    selections = [];
+    catCounts = new Map(CATEGORY_ORDER.map(c=>[c,0]));
+    modelCounts = new Map();
+    coMatrix = new Map();
+  }
+  function addCo(a,b){
+    if(a===b) return;
+    const key = a < b ? `${a}|${b}` : `${b}|${a}`;
+    coMatrix.set(key, (coMatrix.get(key)||0)+1);
+  }
+  function generateMockData(){
+    resetStats();
+    for(let p=1; p<=PARTICIPANTS; p++){
+      const k = randInt(2,4);
+      const chosenCats = [];
+      while(chosenCats.length < k){
+        const c = weightedCategoryPick();
+        if(!chosenCats.includes(c)) chosenCats.push(c);
+      }
+      for(let i=0;i<chosenCats.length;i++){
+        for(let j=i+1;j<chosenCats.length;j++){
+          addCo(chosenCats[i], chosenCats[j]);
+        }
+      }
+      for(const cat of chosenCats){
+        const variants = GROUPS[cat];
+        const v = variants[randInt(0, variants.length-1)];
+        const qty = randInt(1,3);
+        const modelKey = `${cat}/${v}`;
+
+        selections.push({
+          participantId: `P${String(p).padStart(3,"0")}`,
+          category: cat,
+          variant: v,
+          modelKey,
+          qty
+        });
+
+        catCounts.set(cat, (catCounts.get(cat)||0) + qty);
+        modelCounts.set(modelKey, (modelCounts.get(modelKey)||0) + qty);
+      }
+    }
+  }
+
+  /** UI build */
+  const navList = document.getElementById("navList");
+  const catalogWrap = document.getElementById("catalogWrap");
+  const searchInput = document.getElementById("searchInput");
+
+  function buildNav(filterText=""){
+    navList.innerHTML = "";
+    const q = filterText.trim().toLowerCase();
+    for(const cat of CATEGORY_ORDER){
+      if(q && !cat.toLowerCase().includes(q)) continue;
+
+      const a = document.createElement("a");
+      a.href = `#cat-${encodeURIComponent(cat)}`;
+
+      const left = document.createElement("span");
+      left.textContent = cat;
+
+      const pill = document.createElement("span");
+      pill.className = "pill";
+      pill.textContent = `${catCounts.get(cat) || 0}`;
+
+      a.appendChild(left);
+      a.appendChild(pill);
+      navList.appendChild(document.createElement("li")).appendChild(a);
+    }
+  }
+
+  function buildCatalog(filterText=""){
+    catalogWrap.innerHTML = "";
+    const q = filterText.trim().toLowerCase();
+
+    for(const cat of CATEGORY_ORDER){
+      if(q && !cat.toLowerCase().includes(q)) continue;
+
+      const section = document.createElement("section");
+      section.className = "panel";
+      section.setAttribute("id", `cat-${encodeURIComponent(cat)}`);
+
+      const header = document.createElement("div");
+      header.className = "panelHeader";
+      header.innerHTML = `<strong>${cat}</strong><span class="pill">Total selected: ${catCounts.get(cat)||0}</span>`;
+      section.appendChild(header);
+
+      const body = document.createElement("div");
+      body.className = "panelBody";
+
+      const grid = document.createElement("div");
+      grid.className = "grid";
+
+      for(const v of GROUPS[cat]){
+        const modelKey = `${cat}/${v}`;
+
+        const card = document.createElement("div");
+        card.className = "card";
+
+        const thumb = document.createElement("div");
+        thumb.className = "thumb";
+
+        // Generate URL
+        const url = glbUrl(cat, v);
+
+        const mv = document.createElement("model-viewer");
+        mv.setAttribute("src", url);
+        mv.setAttribute("camera-controls", "");
+        mv.setAttribute("auto-rotate", "");
+        mv.setAttribute("rotation-per-second", "20deg");
+        mv.setAttribute("shadow-intensity", "0.7");
+        mv.setAttribute("exposure", "1.0");
+        mv.setAttribute("alt", `${cat} ${v}`);
+
+        const fallback = document.createElement("div");
+        fallback.className = "fallback";
+        fallback.innerHTML = `
+          โหลด GLB ไม่ได้<br/>
+          <span style="font-size:9px; color:var(--muted); word-break:break-all;">${url}</span>
+        `;
+
+        mv.addEventListener("error", ()=>{
+          mv.style.display = "none";
+          fallback.style.display = "flex";
+        });
+
+        thumb.appendChild(mv);
+        thumb.appendChild(fallback);
+
+        const cardBody = document.createElement("div");
+        cardBody.className = "cardBody";
+
+        const topRow = document.createElement("div");
+        topRow.className = "row";
+        topRow.innerHTML = `<div style="font-weight:900;font-size:13px;">Variant ${v}</div>
+                            <span class="pill">Used: ${modelCounts.get(modelKey)||0}</span>`;
+
+        const meta = document.createElement("div");
+        meta.className = "metaLine";
+        meta.textContent = `${cat}/${v}`;
+
+        const btn = document.createElement("button");
+        btn.className = "selectBtn";
+        btn.textContent = "Select (simulate +1)";
+        btn.addEventListener("click", ()=>{
+          selections.push({ participantId:"LIVE", category:cat, variant:v, modelKey, qty:1 });
+          catCounts.set(cat, (catCounts.get(cat)||0) + 1);
+          modelCounts.set(modelKey, (modelCounts.get(modelKey)||0) + 1);
+          refreshAll(searchInput.value);
+        });
+
+        cardBody.appendChild(topRow);
+        cardBody.appendChild(meta);
+        cardBody.appendChild(document.createElement("div")).style.flex = "1";
+        cardBody.appendChild(btn);
+
+        card.appendChild(thumb);
+        card.appendChild(cardBody);
+        grid.appendChild(card);
+      }
+
+      body.appendChild(grid);
+      section.appendChild(body);
+      catalogWrap.appendChild(section);
+    }
+  }
+
+  /** Export CSV */
+  function exportCSV(){
+    const header = ["participantId","category","variant","modelKey","qty"];
+    const rows = selections.map(r => [r.participantId, r.category, r.variant, r.modelKey, String(r.qty)]);
+    const esc = (s)=> `"${String(s).replaceAll('"','""')}"`;
+    const csv = [header.join(","), ...rows.map(r=>r.map(esc).join(","))].join("\n");
+    const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "mock_selections_100_participants.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  /** Network view */
+  const tabCatalog = document.getElementById("tabCatalog");
+  const tabNetwork = document.getElementById("tabNetwork");
+  const networkWrap = document.getElementById("networkWrap");
+  const netCanvas = document.getElementById("netCanvas");
+  const tip = document.getElementById("tip");
+
+  let net = { nodes: [], edges: [] };
+
+  function buildNetworkData(){
+    const counts = CATEGORY_ORDER.map(c=>catCounts.get(c)||0);
+    const maxC = Math.max(...counts, 1);
+
+    net.nodes = CATEGORY_ORDER.map((cat, idx)=>{
+      const ang = (idx / CATEGORY_ORDER.length) * Math.PI * 2;
+      return { id:cat, label:cat, value:catCounts.get(cat)||0, r: 6 + 18*((catCounts.get(cat)||0)/maxC), a:ang, x:0, y:0 };
+    });
+
+    const edges = [];
+    for(const [key, v] of coMatrix.entries()){
+      const [a,b] = key.split("|");
+      edges.push({a,b,w:v});
+    }
+    edges.sort((e1,e2)=>e2.w - e1.w);
+    net.edges = edges.slice(0, 70);
+  }
+
+  function resizeCanvas(){
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const rect = netCanvas.getBoundingClientRect();
+    netCanvas.width = Math.floor(rect.width * dpr);
+    netCanvas.height = Math.floor(rect.height * dpr);
+  }
+  function drawNetwork(){
+    const ctx = netCanvas.getContext("2d");
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const w = netCanvas.width / dpr;
+    const h = netCanvas.height / dpr;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,w,h);
+
+    const cx = w/2, cy = h/2;
+    const radius = Math.min(w,h)*0.38;
+
+    net.nodes.forEach(n=>{
+      n.x = cx + Math.cos(n.a)*radius;
+      n.y = cy + Math.sin(n.a)*radius;
+    });
+
+    const maxW = Math.max(...net.edges.map(e=>e.w), 1);
+    net.edges.forEach(e=>{
+      const na = net.nodes.find(n=>n.id===e.a);
+      const nb = net.nodes.find(n=>n.id===e.b);
+      if(!na || !nb) return;
+      const alpha = 0.05 + 0.25*(e.w/maxW);
+
+      ctx.beginPath();
+      ctx.strokeStyle = `rgba(232,236,255,${alpha})`;
+      const mx = (na.x + nb.x)/2, my = (na.y + nb.y)/2;
+      const pull = 0.20;
+      const dx = mx - cx, dy = my - cy;
+      const cx2 = mx + dx*pull, cy2 = my + dy*pull;
+
+      ctx.moveTo(na.x, na.y);
+      ctx.quadraticCurveTo(cx2, cy2, nb.x, nb.y);
+      ctx.stroke();
+    });
+
+    net.nodes.forEach(n=>{
+      ctx.beginPath();
+      ctx.fillStyle = "rgba(103,232,249,.35)";
+      ctx.strokeStyle = "rgba(122,161,255,.55)";
+      ctx.lineWidth = 1.25;
+      ctx.arc(n.x, n.y, n.r, 0, Math.PI*2);
+      ctx.fill(); ctx.stroke();
+
+      ctx.fillStyle = "rgba(232,236,255,.78)";
+      ctx.font = "11px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+      const alignLeft = (Math.cos(n.a) >= 0);
+      ctx.textAlign = alignLeft ? "left" : "right";
+      ctx.textBaseline = "middle";
+      const off = n.r + 6;
+      ctx.fillText(n.label, n.x + (alignLeft ? off : -off), n.y);
+    });
+
+    ctx.fillStyle = "rgba(232,236,255,.85)";
+    ctx.font = "800 14px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("Category Co-selection Network", cx, cy);
+  }
+
+  function hitTestNode(mx,my){
+    for(const n of net.nodes){
+      const dx = mx - n.x, dy = my - n.y;
+      if(Math.sqrt(dx*dx + dy*dy) <= n.r + 2) return n;
+    }
+    return null;
+  }
+  netCanvas.addEventListener("mousemove", (ev)=>{
+    const rect = netCanvas.getBoundingClientRect();
+    const mx = ev.clientX - rect.left;
+    const my = ev.clientY - rect.top;
+    const n = hitTestNode(mx,my);
+    if(!n){ tip.style.display="none"; return; }
+    tip.style.display="block";
+    tip.style.left = (ev.clientX + 12) + "px";
+    tip.style.top = (ev.clientY + 12) + "px";
+    tip.innerHTML = `<b>${n.label}</b><br/>Selections: <b>${n.value}</b>`;
+  });
+  netCanvas.addEventListener("mouseleave", ()=> tip.style.display="none");
+
+  function showCatalog(){
+    tabCatalog.classList.add("active");
+    tabNetwork.classList.remove("active");
+    catalogWrap.style.display = "";
+    networkWrap.style.display = "none";
+  }
+  function showNetwork(){
+    tabCatalog.classList.remove("active");
+    tabNetwork.classList.add("active");
+    catalogWrap.style.display = "none";
+    networkWrap.style.display = "block";
+    buildNetworkData();
+    resizeCanvas();
+    drawNetwork();
+  }
+  tabCatalog.addEventListener("click", showCatalog);
+  tabNetwork.addEventListener("click", showNetwork);
+
+  function refreshKPIs(){
+    const total = selections.reduce((s,r)=>s+(r.qty||0),0);
+    document.getElementById("kpiSelections").textContent = total;
+  }
+  function refreshAll(filterText=""){
+    buildNav(filterText);
+    buildCatalog(filterText);
+    refreshKPIs();
+    buildNetworkData();
+    if(networkWrap.style.display !== "none"){
+      resizeCanvas(); drawNetwork();
+    }
+  }
+
+  document.getElementById("btnRegenerate").addEventListener("click", ()=>{
+    generateMockData();
+    refreshAll(searchInput.value);
+  });
+  document.getElementById("btnExportCSV").addEventListener("click", exportCSV);
+  searchInput.addEventListener("input", ()=> refreshAll(searchInput.value));
+  window.addEventListener("resize", ()=>{ if(networkWrap.style.display !== "none"){ resizeCanvas(); drawNetwork(); } });
+
+  // boot
+  generateMockData();
+  refreshAll("");
+  showCatalog();
+</script>
+</body>
+</html>
