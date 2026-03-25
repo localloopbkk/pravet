@@ -185,6 +185,24 @@
     }
     .item-card .card-count.show { display:block; }
 
+    /* ── CARD LOADING STATE ── */
+    .card-spinner {
+      display:none; width:20px; height:20px;
+      border:2.5px solid rgba(255,255,255,.18);
+      border-top-color:var(--accent);
+      border-radius:50%; animation:spin .7s linear infinite;
+      position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    }
+    @keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+    .item-card.loading .thumb, .item-card.loading .thumb-placeholder { opacity:.25; }
+    .item-card.loading .card-spinner { display:block; }
+    .item-card.load-error { border-color:rgba(255,100,100,.45) !important; }
+    .item-card.load-error .card-err { display:block !important; }
+    .card-err {
+      display:none; position:absolute; bottom:3px; left:0; right:0;
+      text-align:center; font-size:9px; color:#ff8888;
+    }
+
     /* ── CONTROLS ── */
     .panel { display:flex; flex-direction:column; gap:7px; }
 
@@ -454,9 +472,15 @@
     const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 10, 10000000);
     camera.position.set(5000, -5000, 4000); camera.up.set(0, 0, 1);
 
-    const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true, logarithmicDepthBuffer:true });
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    const renderer = new THREE.WebGLRenderer({
+      antialias: !isMobile,
+      alpha: true,
+      logarithmicDepthBuffer: !isMobile,   // expensive on iOS GPU
+      powerPreference: 'high-performance',
+    });
     renderer.setSize(innerWidth, innerHeight);
-    renderer.setPixelRatio(devicePixelRatio);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, isMobile ? 1.5 : 2)); // cap DPR
     renderer.setClearColor(0x000000, 0);
     renderer.outputEncoding = THREE.sRGBEncoding;
     document.getElementById('container').appendChild(renderer.domElement);
@@ -464,6 +488,51 @@
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping=true; controls.dampingFactor=0.08; controls.screenSpacePanning=false;
     controls.minDistance=500; controls.maxDistance=500000; controls.maxPolarAngle=Math.PI/1.8;
+
+    /* ── ZOOM TO MOUSE CURSOR ── */
+    controls.enableZoom = false; // ปิด zoom ของ OrbitControls แล้วจัดการเอง
+
+    const _groundPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+    const _zoomRaycaster = new THREE.Raycaster();
+
+    renderer.domElement.addEventListener('wheel', (e) => {
+      e.preventDefault();
+
+      // หาตำแหน่งเมาส์ใน NDC
+      const rect = renderer.domElement.getBoundingClientRect();
+      const mouseNDC = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width)  * 2 - 1,
+        -((e.clientY - rect.top)  / rect.height) * 2 + 1
+      );
+
+      // ยิง ray หา intersection กับ ground plane (z=0)
+      _zoomRaycaster.setFromCamera(mouseNDC, camera);
+      const mouseWorld = new THREE.Vector3();
+      const hit = _zoomRaycaster.ray.intersectPlane(_groundPlane, mouseWorld);
+
+      // ถ้าไม่ชน ground plane → ใช้จุดกึ่งกลาง controls.target แทน
+      const pivotPoint = hit ? mouseWorld : controls.target.clone();
+
+      // คำนวณ zoom factor (trackpad / mouse ต่างกัน)
+      const delta = e.deltaMode === 1 ? e.deltaY * 30 : e.deltaY; // line vs pixel
+      const zoomFactor = Math.pow(1.001, delta); // smooth exponential
+
+      // คำนวณระยะใหม่
+      const camToPivot   = new THREE.Vector3().subVectors(camera.position,  pivotPoint);
+      const targToPivot  = new THREE.Vector3().subVectors(controls.target,  pivotPoint);
+
+      const newCamPos    = new THREE.Vector3().addVectors(pivotPoint, camToPivot.multiplyScalar(zoomFactor));
+      const newTarget    = new THREE.Vector3().addVectors(pivotPoint, targToPivot.multiplyScalar(zoomFactor));
+
+      // Clamp ระยะระหว่าง camera กับ target
+      const newDist = newCamPos.distanceTo(newTarget);
+      if (newDist >= controls.minDistance && newDist <= controls.maxDistance) {
+        camera.position.copy(newCamPos);
+        controls.target.copy(newTarget);
+      }
+
+      controls.update();
+    }, { passive: false });
 
     function getMouseNDC(e) {
       const r = renderer.domElement.getBoundingClientRect();
@@ -496,7 +565,7 @@
 
     /* ─ STARS ─ */
     const stars = (() => {
-      const g=new THREE.BufferGeometry(), COUNT=3000, spread=50000;
+      const g=new THREE.BufferGeometry(), COUNT=isMobile?600:3000, spread=50000;
       const p=new Float32Array(COUNT*3);
       for(let i=0;i<COUNT;i++){p[i*3]=(Math.random()*2-1)*spread;p[i*3+1]=(Math.random()*2-1)*spread;p[i*3+2]=(Math.random()*2-1)*spread;}
       g.setAttribute('position',new THREE.BufferAttribute(p,3));
@@ -721,27 +790,119 @@
       '18 Experiment':['18 Experiment::Experiment 01','18 Experiment::Experiment 02','18 Experiment::Experiment 03','18 Experiment::Experiment 04','18 Experiment::Experiment 05'],
     };
 
-    const GROUP_TARGETS_M = {
-      '01 เก้าอี้':{short:.60,long:1.80},'02 โต๊ะ':{short:.80,long:2.00},
-      '03 เครื่องออกกำลังกาย':{short:1.00,long:2.50},'04 เครื่องเล่นเด็ก':{short:1.50,long:4.00},
-      '05 กล้องวงจรปิด':{short:.20,long:.50},'06 ตู้กดน้ำสาธารณะ':{short:.60,long:1.20},
-      '07 ไฟส่องสว่าง':{short:.30,long:.50},'08 ที่หลบฝน/หลังคา':{short:3.00,long:5.00},
-      '09 ตู้ล็อคเกอร์สาธารณะ':{short:.60,long:1.50},'10 เครื่องกระตุกหัวใจ AED':{short:.50,long:.80},
-      '11 จุดทิ้งขยะ':{short:.40,long:.80},'12 ลำโพงกระจายเสียง':{short:.30,long:.60},
-      '13 ป้ายและระบบ Wayfinding / Signage':{short:.40,long:1.50},'14 ร่มเงา–ต้นไม้–ภูมิทัศน์ใช้งาน':{short:1.50,long:3.00},
-      '15 ความปลอดภัยและขอความช่วยเหลือ':{short:.50,long:2.00},'16 การจัดการจักรยานและไมโครโมบิลิตี้':{short:.60,long:2.50},
-      '17 ห้องน้ำสาธารณะ':{short:2.50,long:6.00},
-      '18 Experiment':{short:0.50,long:2.00}
+    /*
+     * ITEM_SCALE_M — ขนาดจริงแต่ละชิ้น (มาตรฐานสากล) หน่วย: เมตร
+     *   long = สเกลตาม footprint ที่ยาวที่สุด (กว้าง/ลึก)
+     *   tall = สเกลตามความสูง (size.z หลัง rotate x 90°)
+     */
+    const ITEM_SCALE_M = {
+      /* 01 เก้าอี้ */
+      '01 เก้าอี้::เก้าอี้สนามแบบม้านั่งเตี้ย':                        {long:1.80},
+      '01 เก้าอี้::เก้าอี้ชมสนามกีฬาแบบอัฒจันทร์ย่อม':                {long:2.00},
+      '01 เก้าอี้::เก้าอี้มีพนักพิงพร้อมที่วางแขน':                    {long:1.80},
+      '01 เก้าอี้::เก้าอี้วงกลมรอบต้นไม้':                             {long:2.40},
+      '01 เก้าอี้::เก้าอี้เอนกาย/เก้าอี้นอนสนาม':                     {long:1.90},
+      /* 02 โต๊ะ */
+      '02 โต๊ะ::โต๊ะปิกนิกพร้อมม้านั่ง':                              {long:1.80},
+      '02 โต๊ะ::โต๊ะบาร์ยืน/โต๊ะสูงริมทางวิ่ง':                       {long:0.70},
+      '02 โต๊ะ::โต๊ะหมากรุก/เกมกระดาน':                                {long:0.90},
+      '02 โต๊ะ::โต๊ะทำงานกลางแจ้ง':                                    {long:1.40},
+      /* 03 เครื่องออกกำลังกาย */
+      '03 เครื่องออกกำลังกาย::สเตชั่นยืดเหยียด/คูลดาวน์':             {long:2.00},
+      '03 เครื่องออกกำลังกาย::เครื่องฝึกแรงต้านแบบน้ำหนักตัว':         {long:1.50},
+      '03 เครื่องออกกำลังกาย::เครื่องคาร์ดิโอแบบกลางแจ้ง':             {long:1.50},
+      '03 เครื่องออกกำลังกาย::สเตชั่นฝึกสมดุล/ผู้สูงอายุ':             {long:1.50},
+      '03 เครื่องออกกำลังกาย::โซนเวทแบบใช้ดัมบ์เบลกลางแจ้ง':           {long:2.00},
+      /* 04 เครื่องเล่นเด็ก */
+      '04 เครื่องเล่นเด็ก::โครงปีนหน้าผา/ผนังปีน':                    {long:3.00},
+      '04 เครื่องเล่นเด็ก::ชุดสไลเดอร์–หอคอย–สะพาน':                  {long:5.00},
+      '04 เครื่องเล่นเด็ก::ชิงช้าแบบปลอดภัย':                          {long:3.50},
+      '04 เครื่องเล่นเด็ก::เครื่องเล่นน้ำแบบพ่นฝอย':                   {long:3.00},
+      '04 เครื่องเล่นเด็ก::โซนเล่นเชิงสร้างสรรค์ด้วยทราย/ธรรมชาติ':   {long:5.00},
+      /* 05 กล้องวงจรปิด */
+      '05 กล้องวงจรปิด::กล้องทางเข้า–ออกสวน':                          {tall:3.50},
+      '05 กล้องวงจรปิด::กล้องโซนสนามกีฬาและอัฒจันทร์':                 {tall:4.50},
+      '05 กล้องวงจรปิด::กล้องตามทางวิ่งและจุดอับสายตา':                 {tall:3.50},
+      '05 กล้องวงจรปิด::กล้องใกล้บ่อน้ำ/พื้นที่เสี่ยง':                {tall:3.00},
+      /* 06 ตู้กดน้ำสาธารณะ */
+      '06 ตู้กดน้ำสาธารณะ::น้ำดื่มพร้อมที่เติมขวด':                    {tall:1.20},
+      '06 ตู้กดน้ำสาธารณะ::ตู้กดน้ำแบบเข้าถึงรถเข็น':                  {tall:0.90},
+      '06 ตู้กดน้ำสาธารณะ::จุดน้ำ–ล้างมือใกล้สนามเด็กเล่น':            {tall:1.00},
+      '06 ตู้กดน้ำสาธารณะ::จุดน้ำสำหรับสัตว์เลี้ยง':                   {tall:0.40},
+      /* 07 ไฟส่องสว่าง */
+      '07 ไฟส่องสว่าง::เสาไฟทางเดินทั่วไป':                            {tall:4.00},
+      '07 ไฟส่องสว่าง::ไฟสปอร์ตไลท์สนามกีฬา':                         {tall:12.00},
+      '07 ไฟส่องสว่าง::ไฟบรรยากาศริมบ่อน้ำ/ทางเดินไม้':                {tall:2.50},
+      '07 ไฟส่องสว่าง::ไฟโซลาร์อัจฉริยะ':                             {tall:5.00},
+      /* 08 ที่หลบฝน/หลังคา */
+      '08 ที่หลบฝน/หลังคา::ศาลากันแดด–กันฝนแบบเปิดโล่ง':              {long:4.00},
+      '08 ที่หลบฝน/หลังคา::เพอร์โกลาพร้อมไม้เลื้อย':                  {long:4.00},
+      '08 ที่หลบฝน/หลังคา::หลังคาคลุมจุดนั่งชมสนาม':                  {long:6.00},
+      '08 ที่หลบฝน/หลังคา::ซุ้มรอ–จุดนัดพบ':                          {long:3.00},
+      /* 09 ตู้ล็อคเกอร์สาธารณะ */
+      '09 ตู้ล็อคเกอร์สาธารณะ::ตู้ล็อคเกอร์นักวิ่ง–นักกีฬา':          {long:1.80},
+      '09 ตู้ล็อคเกอร์สาธารณะ::ตู้ฝากของสำหรับกิจกรรมเมือง':           {long:2.40},
+      '09 ตู้ล็อคเกอร์สาธารณะ::ตู้ล็อคเกอร์อุปกรณ์ยืมใช้':            {long:1.80},
+      /* 10 AED */
+      '10 เครื่องกระตุกหัวใจ AED::ตู้ AED จุดศูนย์กลางสวน':            {tall:1.40},
+      '10 เครื่องกระตุกหัวใจ AED::ตู้ AED โซนสนามกีฬา':                {tall:1.40},
+      '10 เครื่องกระตุกหัวใจ AED::ตู้ AED ใกล้ทางวิ่งระยะไกล':         {tall:1.40},
+      /* 11 จุดทิ้งขยะ */
+      '11 จุดทิ้งขยะ::ถังขยะแยกประเภท':                                {long:1.80},
+      '11 จุดทิ้งขยะ::ถังขยะริมทางวิ่งแบบจุดย่อย':                     {tall:0.80},
+      '11 จุดทิ้งขยะ::ถังทิ้งมูลสัตว์เลี้ยง':                          {tall:1.00},
+      /* 12 ลำโพงกระจายเสียง */
+      '12 ลำโพงกระจายเสียง::ระบบประกาศฉุกเฉินทั่วสวน':                 {tall:4.00},
+      '12 ลำโพงกระจายเสียง::ลำโพงโซนสนามกีฬาและกิจกรรม':               {tall:5.00},
+      '12 ลำโพงกระจายเสียง::ลำโพงดนตรีบรรยากาศโซนพักผ่อน':             {tall:2.50},
+      '12 ลำโพงกระจายเสียง::จุดประกาศสองภาษา/ข้อมูลสวน':               {tall:2.50},
+      /* 13 ป้ายและระบบ Wayfinding */
+      '13 ป้ายและระบบ Wayfinding / Signage::ป้ายแผนที่สวนแบบรวม':       {tall:2.20},
+      '13 ป้ายและระบบ Wayfinding / Signage::ป้ายบอกทิศทางแบบเสาเข็ม':  {tall:2.00},
+      '13 ป้ายและระบบ Wayfinding / Signage::หมุดระยะทางลู่วิ่ง':        {tall:0.80},
+      '13 ป้ายและระบบ Wayfinding / Signage::ป้ายกติกาการใช้พื้นที่/สนาม':{tall:1.80},
+      '13 ป้ายและระบบ Wayfinding / Signage::ป้ายเตือนความเสี่ยงริมบ่อน้ำ':{tall:1.50},
+      /* 14 ร่มเงา–ต้นไม้–ภูมิทัศน์ */
+      '14 ร่มเงา–ต้นไม้–ภูมิทัศน์ใช้งาน::แนวไม้ให้ร่มตามทางวิ่ง':     {long:3.50},
+      '14 ร่มเงา–ต้นไม้–ภูมิทัศน์ใช้งาน::แปลงพุ่มเตี้ย':              {long:2.00},
+      '14 ร่มเงา–ต้นไม้–ภูมิทัศน์ใช้งาน::ลานหญ้าใช้งานพร้อมร่มเงา':   {long:6.00},
+      '14 ร่มเงา–ต้นไม้–ภูมิทัศน์ใช้งาน::โครงบังแดดแบบเบา':           {long:4.00},
+      /* 15 ความปลอดภัย */
+      '15 ความปลอดภัยและขอความช่วยเหลือ::เสาฉุกเฉิน SOS พร้อมไฟและสัญญาณ':{tall:3.00},
+      '15 ความปลอดภัยและขอความช่วยเหลือ::จุดปฐมพยาบาลพื้นฐาน':         {long:1.50},
+      '15 ความปลอดภัยและขอความช่วยเหลือ::ป้ายรหัสโซน/พิกัดสวนสำหรับแจ้งเหตุ':{tall:1.50},
+      '15 ความปลอดภัยและขอความช่วยเหลือ::ราวกันตกและขอบกันลื่นริมบ่อน้ำ':{long:3.00},
+      '15 ความปลอดภัยและขอความช่วยเหลือ::จุดเจ้าหน้าที่/ตู้สื่อสารบริการ':{long:2.00},
+      /* 16 จักรยาน */
+      '16 การจัดการจักรยานและไมโครโมบิลิตี้::ที่จอดจักรยานแบบ U-Rack': {long:2.00},
+      '16 การจัดการจักรยานและไมโครโมบิลิตี้::จุดจอดสกู๊ตเตอร์/ไมโครโมบิลิตี้แบบจัดระเบียบ':{long:3.00},
+      '16 การจัดการจักรยานและไมโครโมบิลิตี้::จุดซ่อมจักรยานพร้อมปั๊มลม':{tall:1.50},
+      '16 การจัดการจักรยานและไมโครโมบิลิตี้::มาตรการชะลอความเร็ว':      {long:3.00},
+      /* 17 ห้องน้ำสาธารณะ */
+      '17 ห้องน้ำสาธารณะ::ห้องน้ำขนาดเล็กแยกเพศแบบแยกห้อง':           {long:3.00},
+      '17 ห้องน้ำสาธารณะ::ห้องน้ำขนาดกลาง แยกเพศ เพศละ 2 ห้อง':       {long:5.00},
+      '17 ห้องน้ำสาธารณะ::ห้องน้ำใหญ่สุดพร้อมห้องอาบน้ำ':             {long:8.00},
+      '17 ห้องน้ำสาธารณะ::จุดล้างมือ–ล้างเท้าด้านนอก':                 {long:2.00},
+      /* 18 Experiment: fallback 2m */
     };
 
     function getGroupTitleByKey(key){for(const[t,l]of Object.entries(GROUPS))if(l.includes(key))return t;return null;}
+
+    /* computeBaseScale:
+       หลัง obj.rotation.x = PI/2:
+         size.x = กว้าง, size.y = ลึก (original Z), size.z = สูง (original Y)  */
     function computeBaseScale(obj,key){
-      let t=GROUP_TARGETS_M[key];
-      if(!t){const g=getGroupTitleByKey(key);t=g?GROUP_TARGETS_M[g]:null;}
-      if(!t)return 1;
-      const size=new THREE.Box3().setFromObject(obj).getSize(new THREE.Vector3());
-      const ln=Math.max(size.x,size.y);
-      return ln>0?((t.long*UNIT_PER_M)/ln):1;
+      const t = ITEM_SCALE_M[key];
+      const size = new THREE.Box3().setFromObject(obj).getSize(new THREE.Vector3());
+      if(!t){
+        const ln = Math.max(size.x,size.y);
+        return ln>0 ? (2.0*UNIT_PER_M)/ln : 1;
+      }
+      if(t.tall){
+        return size.z>0 ? (t.tall*UNIT_PER_M)/size.z : 1;
+      }
+      const ln = Math.max(size.x,size.y);
+      return ln>0 ? (t.long*UNIT_PER_M)/ln : 1;
     }
 
     /* ─ MODEL LOADING ─ */
@@ -886,6 +1047,33 @@
       '18 Experiment::Experiment 05': '18 Experiment/05/1.glb',
     };
 
+    /* ── ทำโมเดลทุกชิ้นเป็นสีขาวบริสุทธิ์ ──
+       ลบ texture map เพื่อกันสีดั้งเดิมรั่ว แล้วทาสีขาวพร้อม PBR ที่สะอาด  */
+    function applyWhiteMaterial(root){
+      root.traverse(n=>{
+        if(!n.isMesh) return;
+        const mats = Array.isArray(n.material) ? n.material : [n.material];
+        mats.forEach(mat=>{
+          if(!mat) return;
+          // ลบ texture ทั้งหมดที่ส่งผลต่อสี
+          if(mat.map)           { mat.map.dispose();           mat.map=null; }
+          if(mat.normalMap)     { mat.normalMap.dispose();     mat.normalMap=null; }
+          if(mat.roughnessMap)  { mat.roughnessMap.dispose();  mat.roughnessMap=null; }
+          if(mat.metalnessMap)  { mat.metalnessMap.dispose();  mat.metalnessMap=null; }
+          if(mat.aoMap)         { mat.aoMap.dispose();         mat.aoMap=null; }
+          if(mat.emissiveMap)   { mat.emissiveMap.dispose();   mat.emissiveMap=null; }
+          // ตั้งค่าสีขาว
+          if(mat.color)     mat.color.setRGB(0.96, 0.96, 0.96);
+          if(mat.emissive)  mat.emissive.setRGB(0,0,0);
+          mat.roughness  = 0.55;
+          mat.metalness  = 0.05;
+          mat.opacity    = 1;
+          mat.transparent= false;
+          mat.needsUpdate= true;
+        });
+      });
+    }
+
     const loadModel=(name,filePath)=>{
       const url=MODEL_BASE_URL+encodeURI(filePath);
       loader.load(url,(gltf)=>{
@@ -895,16 +1083,71 @@
         const wrap=new THREE.Group(); wrap.add(obj);
         obj.position.set(-center.x,-center.y,-min.z);
         wrap.traverse(n=>{if(n.isMesh){n.castShadow=true;n.receiveShadow=true;if(n.material)n.material=n.material.clone();}});
+        applyWhiteMaterial(wrap);
         templates[name]=wrap;
       },undefined,err=>console.warn('Failed:',url,err));
     };
 
-    /* โหลดโมเดลทุกตัว: ใช้ ITEM_PATH ถ้ามี, fallback legacy path */
+    /* ── LAZY LOADING QUEUE (max 3 concurrent) ── */
+    const MODEL_QUEUE=[], loadingKeys=new Set(), failedKeys=new Set();
+    let activeLoads=0;
+    const MAX_CONCURRENT=isMobile?4:6;
+
+    function processQueue(){
+      while(activeLoads<MAX_CONCURRENT&&MODEL_QUEUE.length>0){
+        const {key,filePath,resolve,reject}=MODEL_QUEUE.shift();
+        activeLoads++;
+        const url=MODEL_BASE_URL+encodeURI(filePath);
+        loader.load(url,(gltf)=>{
+          const obj=gltf.scene; obj.rotation.x=Math.PI/2;
+          const box=new THREE.Box3().setFromObject(obj);
+          const center=box.getCenter(new THREE.Vector3()),min=box.min.clone();
+          const wrap=new THREE.Group(); wrap.add(obj);
+          obj.position.set(-center.x,-center.y,-min.z);
+          wrap.traverse(n=>{
+            if(n.isMesh){
+              n.castShadow=!isMobile; n.receiveShadow=!isMobile;
+              if(n.material) n.material=n.material.clone();
+            }
+          });
+          applyWhiteMaterial(wrap);
+          templates[key]=wrap;
+          loadingKeys.delete(key);
+          _setCardState(key,'ready');
+          activeLoads--; processQueue(); resolve(wrap);
+        },undefined,(err)=>{
+          console.warn('Load failed:',url,err);
+          loadingKeys.delete(key); failedKeys.add(key);
+          _setCardState(key,'error');
+          activeLoads--; processQueue(); reject(err);
+        });
+      }
+    }
+
+    function loadModelLazy(key){
+      if(templates[key]) return Promise.resolve(templates[key]);
+      if(failedKeys.has(key)){failedKeys.delete(key);} // allow retry
+      if(loadingKeys.has(key)){
+        return new Promise(r=>{ const t=setInterval(()=>{if(templates[key]){clearInterval(t);r(templates[key]);}else if(failedKeys.has(key)){clearInterval(t);r(null);}},200); });
+      }
+      const groupName=getGroupTitleByKey(key);
+      const idx=(GROUPS[groupName]||[]).indexOf(key);
+      const filePath=ITEM_PATH[key]||(groupName+'/'+(idx+1)+'.glb');
+      loadingKeys.add(key);
+      _setCardState(key,'loading');
+      return new Promise((resolve,reject)=>{ MODEL_QUEUE.push({key,filePath,resolve,reject}); processQueue(); });
+    }
+
+    function _setCardState(key,state){
+      const card=buttons[key]; if(!card)return;
+      card.classList.remove('loading','load-error');
+      if(state==='loading') card.classList.add('loading');
+      if(state==='error')   card.classList.add('load-error');
+    }
+
+    /* โหลดเฉพาะตัวแรกของแต่ละกลุ่ม (preload ล่วงหน้า 18 ตัว) */
     Object.entries(GROUPS).forEach(([groupName,itemKeys])=>{
-      itemKeys.forEach((key,idx)=>{
-        const path = ITEM_PATH[key] || `${groupName}/${idx+1}.glb`;
-        loadModel(key, path);
-      });
+      if(itemKeys[0]) loadModelLazy(itemKeys[0]);
     });
 
     /* ─ BUILD LEFT MENU (grid + thumbnail) ─ */
@@ -961,8 +1204,27 @@
       const cnt=document.createElement('div'); cnt.className='card-count'; cnt.id='count_'+safeId; cnt.textContent='0';
       card.appendChild(cnt);
 
+      /* loading spinner + error badge */
+      const spn=document.createElement('div'); spn.className='card-spinner'; card.appendChild(spn);
+      const err=document.createElement('div'); err.className='card-err'; err.textContent='⚠ โหลดไม่ได้ (แตะเพื่อลองใหม่)'; card.appendChild(err);
+
       card.addEventListener('click',()=>{
-        if(!templates[key]){alert('กำลังโหลดโมเดล...');return;}
+        if(card.classList.contains('loading')) return; // รอโหลดก่อน
+        if(failedKeys.has(key)){
+          loadModelLazy(key); // retry
+          return;
+        }
+        if(!templates[key]){
+          // เริ่มโหลดและเลือกไว้ล่วงหน้า
+          activeKey=key;
+          document.getElementById('selNameDisp').textContent=label+' ⏳';
+          Object.values(buttons).forEach(b=>b.classList.remove('active'));
+          card.classList.add('active'); setSelected(null);
+          loadModelLazy(key).then(()=>{
+            if(activeKey===key) document.getElementById('selNameDisp').textContent=label;
+          });
+          return;
+        }
         activeKey=key;
         document.getElementById('selNameDisp').textContent=label;
         Object.values(buttons).forEach(b=>b.classList.remove('active'));
@@ -1052,7 +1314,7 @@
       if(selected){selected.rotation[ROT_AXIS]=THREE.MathUtils.degToRad(d);if(helper)helper.update();}
     });
 
-    /* ─ DRAG ─ */
+    /* ─ DRAG (mouse) ─ */
     let isDragging=false,dragItem=null;
     const raycaster=new THREE.Raycaster();
 
@@ -1074,10 +1336,40 @@
     });
     renderer.domElement.addEventListener('mouseup',()=>{isDragging=false;dragItem=null;controls.enabled=true;});
 
-    /* ─ PLACE ─ */
-    renderer.domElement.addEventListener('dblclick',e=>{
+    /* ─ DRAG (touch / iOS) ─ */
+    function getTouchNDC(touch){
+      const r=renderer.domElement.getBoundingClientRect();
+      return new THREE.Vector2(((touch.clientX-r.left)/r.width)*2-1,-((touch.clientY-r.top)/r.height)*2+1);
+    }
+    let touchDragItem=null, touchDragging=false;
+    renderer.domElement.addEventListener('touchstart',e=>{
+      if(e.touches.length!==1)return;
+      const m=getTouchNDC(e.touches[0]); raycaster.setFromCamera(m,camera);
+      let pick=null;
+      for(const h of raycaster.intersectObjects(scene.children,true)){
+        let n=h.object;
+        while(n&&n!==scene){if(n.userData.type){pick=n;break;}n=n.parent;}
+        if(pick)break;
+      }
+      if(pick){touchDragging=true;touchDragItem=pick;controls.enabled=false;setSelected(pick);}
+    },{passive:true});
+    renderer.domElement.addEventListener('touchmove',e=>{
+      if(!touchDragging||!touchDragItem||e.touches.length!==1)return;
+      e.preventDefault();
+      raycaster.setFromCamera(getTouchNDC(e.touches[0]),camera);
+      const hit=raycaster.intersectObject(ground)[0];
+      if(hit){touchDragItem.position.set(Math.round(hit.point.x/50)*50,Math.round(hit.point.y/50)*50,0);if(helper)helper.update();}
+    },{passive:false});
+    renderer.domElement.addEventListener('touchend',()=>{touchDragging=false;touchDragItem=null;controls.enabled=true;},{passive:true});
+
+    /* ─ PLACE (double-click mouse) ─ */
+    function doPlace(ndcVec){
       if(!activeKey)return;
-      raycaster.setFromCamera(getMouseNDC(e),camera);
+      if(!templates[activeKey]){
+        loadModelLazy(activeKey).then(()=>{ /* user can try placing again */ });
+        return;
+      }
+      raycaster.setFromCamera(ndcVec,camera);
       const hit=raycaster.intersectObject(ground)[0]; if(!hit)return;
       const md=templates[activeKey].clone(true);
       const base=computeBaseScale(md,activeKey);
@@ -1086,7 +1378,20 @@
       md.userData.type=activeKey;
       scene.add(md); placedStack.push(md); counts[activeKey]++; totalPlaced++;
       updateCount(activeKey); setSelected(md);
-    });
+    }
+
+    renderer.domElement.addEventListener('dblclick',e=>{ doPlace(getMouseNDC(e)); });
+
+    /* ─ DOUBLE-TAP (iOS place) ─ */
+    let lastTap=0;
+    renderer.domElement.addEventListener('touchend',e=>{
+      if(touchDragging) return;
+      const now=Date.now();
+      if(now-lastTap<320&&e.changedTouches.length===1){
+        doPlace(getTouchNDC(e.changedTouches[0]));
+      }
+      lastTap=now;
+    },{passive:true});
 
     /* ─ SUPABASE ─ */
     async function uploadToSupabase(blob){
@@ -1124,7 +1429,12 @@
       }
     });
 
-    window.addEventListener('resize',()=>{renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();});
+    window.addEventListener('resize',()=>{
+      renderer.setSize(innerWidth,innerHeight);
+      renderer.setPixelRatio(Math.min(devicePixelRatio, isMobile?1.5:2));
+      camera.aspect=innerWidth/innerHeight;
+      camera.updateProjectionMatrix();
+    });
 
     let rotDir=0;
     document.getElementById('btn_rot_holdL').onmousedown=()=>rotDir=-1;
