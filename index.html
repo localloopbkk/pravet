@@ -270,8 +270,13 @@
     import { DRACOLoader }   from 'https://unpkg.com/three@0.119.1/examples/jsm/loaders/DRACOLoader.js';
 
     /* ─ CONFIG ─ */
-    const GAS_ID = 'AKfycbwjlpuyDMYdXLzPjvsbH3CCOm25nylo-HvLXhtIgpbd_nUKZzbiQI-DDhkbK2_fHQE_';
-    const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/' + GAS_ID + '/exec';
+    /* Sheet 1 — นับจำนวนโมเดลที่เลือก (11TNv7...) */
+    const COUNTS_GAS_ID   = 'AKfycbwjlpuyDMYdXLzPjvsbH3CCOm25nylo-HvLXhtIgpbd_nUKZzbiQI-DDhkbK2_fHQE_';
+    const COUNTS_SHEET_URL = 'https://script.google.com/macros/s/' + COUNTS_GAS_ID + '/exec';
+
+    /* Sheet 2 — รวบรวมข้อเสนอแนะเพิ่มเติม (1MJIwES...) */
+    const FEEDBACK_GAS_ID   = 'AKfycbziBkzfVnQhdSM7sUtOrF_QZvU7CiI3VZ3a6C8pfBWeBbZc17BSeXMp5SyLHk2h7F5l';
+    const FEEDBACK_SHEET_URL = 'https://script.google.com/macros/s/' + FEEDBACK_GAS_ID + '/exec';
     const SUPABASE_KEY    = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVkaHdia2NteGdpc3Fuem5yeWhwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg0MjkyMzAsImV4cCI6MjA4NDAwNTIzMH0.GUppQsGOW7ypR-skf8waGSX6ouxDUnnxkY5Ep-Tn1rQ';
     const SUPABASE_URL    = 'https://edhwbkcmxgisqnznryhp.supabase.co';
     const SUPABASE_BUCKET = 'submissions';
@@ -711,7 +716,7 @@
       '13 ป้ายและระบบ Wayfinding / Signage::ป้ายกติกาการใช้พื้นที่/สนาม':{tall:1.80},
       '13 ป้ายและระบบ Wayfinding / Signage::ป้ายเตือนความเสี่ยงริมบ่อน้ำ':{tall:1.50},
       /* 14 ร่มเงา–ต้นไม้–ภูมิทัศน์ */
-      '14 ร่มเงา–ต้นไม้–ภูมิทัศน์ใช้งาน::แนวไม้ให้ร่มตามทางวิ่ง':     {long:4.50},
+      '14 ร่มเงา–ต้นไม้–ภูมิทัศน์ใช้งาน::แนวไม้ให้ร่มตามทางวิ่ง':     {long:6.0},
       '14 ร่มเงา–ต้นไม้–ภูมิทัศน์ใช้งาน::แปลงพุ่มเตี้ย':              {long:2.00},
       '14 ร่มเงา–ต้นไม้–ภูมิทัศน์ใช้งาน::ลานหญ้าใช้งานพร้อมร่มเงา':   {long:7.00},
       '14 ร่มเงา–ต้นไม้–ภูมิทัศน์ใช้งาน::โครงบังแดดแบบเบา':           {long:10.00},
@@ -722,21 +727,21 @@
       '15 ความปลอดภัยและขอความช่วยเหลือ::ราวกันตกและขอบกันลื่นริมบ่อน้ำ':{long:3.00},
       '15 ความปลอดภัยและขอความช่วยเหลือ::จุดเจ้าหน้าที่/ตู้สื่อสารบริการ':{long:1.0},
       /* 16 จักรยาน */
-      '16 การจัดการจักรยานและไมโครโมบิลิตี้::ที่จอดจักรยานแบบ U-Rack': {long:1.0},
-      '16 การจัดการจักรยานและไมโครโมบิลิตี้::จุดจอดสกู๊ตเตอร์/ไมโครโมบิลิตี้แบบจัดระเบียบ':{long:2.0},
+      '16 การจัดการจักรยานและไมโครโมบิลิตี้::ที่จอดจักรยานแบบ U-Rack': {long:1.5},
+      '16 การจัดการจักรยานและไมโครโมบิลิตี้::จุดจอดสกู๊ตเตอร์/ไมโครโมบิลิตี้แบบจัดระเบียบ':{long:2.50},
       '16 การจัดการจักรยานและไมโครโมบิลิตี้::จุดซ่อมจักรยานพร้อมปั๊มลม':{tall:0.525},
-      '16 การจัดการจักรยานและไมโครโมบิลิตี้::มาตรการชะลอความเร็ว':      {long:3.0},
+      '16 การจัดการจักรยานและไมโครโมบิลิตี้::มาตรการชะลอความเร็ว':      {long:3.5},
       /* 17 ห้องน้ำสาธารณะ */
-      '17 ห้องน้ำสาธารณะ::ห้องน้ำขนาดเล็กแยกเพศแบบแยกห้อง':           {long:4.0},
-      '17 ห้องน้ำสาธารณะ::ห้องน้ำขนาดกลาง แยกเพศ เพศละ 2 ห้อง':       {long:4.00},
-      '17 ห้องน้ำสาธารณะ::ห้องน้ำใหญ่สุดพร้อมห้องอาบน้ำ':             {long:4.00},
-      '17 ห้องน้ำสาธารณะ::จุดล้างมือ–ล้างเท้าด้านนอก':                 {long:2.0},
+      '17 ห้องน้ำสาธารณะ::ห้องน้ำขนาดเล็กแยกเพศแบบแยกห้อง':           {long:7.0},
+      '17 ห้องน้ำสาธารณะ::ห้องน้ำขนาดกลาง แยกเพศ เพศละ 2 ห้อง':       {long:7.00},
+      '17 ห้องน้ำสาธารณะ::ห้องน้ำใหญ่สุดพร้อมห้องอาบน้ำ':             {long:13.00},
+      '17 ห้องน้ำสาธารณะ::จุดล้างมือ–ล้างเท้าด้านนอก':                 {long:3.0},
       /* 18 คน: fallback 2m */
-            '18 คน::คน 01': {tall: .3},
-      '18 คน::คน 02': {tall:3},
-      '18 คน::คน 03': {tall:1.0},
-      '18 คน::คน 04': {tall:1},
-      '18 คน::คน 05': {tall:1},
+            '18 คน::คน 01': {tall:1.5},
+      '18 คน::คน 02': {tall:4},
+      '18 คน::คน 03': {tall:1.5},
+      '18 คน::คน 04': {tall:4},
+      '18 คน::คน 05': {tall:1.5},
     };
 
     /* ═════════════════════════════════════════════════════════════════
@@ -928,7 +933,7 @@
       /* 17 ห้องน้ำสาธารณะ */
       '17 ห้องน้ำสาธารณะ::ห้องน้ำขนาดเล็กแยกเพศแบบแยกห้อง':           1.0,
       '17 ห้องน้ำสาธารณะ::ห้องน้ำขนาดกลาง แยกเพศ เพศละ 2 ห้อง':       1.0,
-      '17 ห้องน้ำสาธารณะ::ห้องน้ำใหญ่สุดพร้อมห้องอาบน้ำ':             1.0,
+      '17 ห้องน้ำสาธารณะ::ห้องน้ำใหญ่สุดพร้อมห้องอาบน้ำ':             3.0,
       '17 ห้องน้ำสาธารณะ::จุดล้างมือ–ล้างเท้าด้านนอก':                 1.0,
       /* 18 คน */
       '18 คน::คน 01': 1.0,
@@ -1142,14 +1147,17 @@
       },undefined,err=>console.warn('Failed:',url,err));
     };
 
-    /* ── LAZY LOADING QUEUE (max 3 concurrent) ── */
+    /* ── LAZY LOADING QUEUE — priority-aware, high concurrency ── */
     const MODEL_QUEUE=[], loadingKeys=new Set(), failedKeys=new Set();
+    /* callbacks[key] = [{resolve,reject}] สำหรับหลาย caller รอโมเดลเดียวกัน */
+    const pendingCallbacks={};
     let activeLoads=0;
-    const MAX_CONCURRENT=isMobile?4:6;
+    /* HTTP/2 รองรับ parallel ได้มาก เพิ่มขีดจำกัดให้สูงขึ้นมาก */
+    const MAX_CONCURRENT=isMobile?8:24;
 
     function processQueue(){
       while(activeLoads<MAX_CONCURRENT&&MODEL_QUEUE.length>0){
-        const {key,filePath,resolve,reject}=MODEL_QUEUE.shift();
+        const {key,filePath}=MODEL_QUEUE.shift();
         activeLoads++;
         const encodedPath = filePath.split('/').map(segment => encodeURIComponent(segment)).join('/');
         const url=MODEL_BASE_URL+encodedPath;
@@ -1169,28 +1177,46 @@
           templates[key]=wrap;
           loadingKeys.delete(key);
           _setCardState(key,'ready');
-          activeLoads--; processQueue(); resolve(wrap);
+          activeLoads--; processQueue();
+          /* แจ้ง callback ทุกตัวที่รออยู่ */
+          (pendingCallbacks[key]||[]).forEach(cb=>cb.resolve(wrap));
+          delete pendingCallbacks[key];
         },undefined,(err)=>{
           console.warn('Load failed:',url,err);
           loadingKeys.delete(key); failedKeys.add(key);
           _setCardState(key,'error');
-          activeLoads--; processQueue(); reject(err);
+          activeLoads--; processQueue();
+          (pendingCallbacks[key]||[]).forEach(cb=>cb.reject(err));
+          delete pendingCallbacks[key];
         });
       }
     }
 
-    function loadModelLazy(key){
+    /* priority=true → ขึ้นหัวแถว (เมื่อคลิก/hover), false → ท้ายแถว (background) */
+    function loadModelLazy(key, priority=false){
       if(templates[key]) return Promise.resolve(templates[key]);
-      if(failedKeys.has(key)){failedKeys.delete(key);} // allow retry
-      if(loadingKeys.has(key)){
-        return new Promise(r=>{ const t=setInterval(()=>{if(templates[key]){clearInterval(t);r(templates[key]);}else if(failedKeys.has(key)){clearInterval(t);r(null);}},200); });
-      }
-      const groupName=getGroupTitleByKey(key);
-      const idx=(GROUPS[groupName]||[]).indexOf(key);
-      const filePath=ITEM_PATH[key]||(groupName+'/'+(idx+1)+'.glb');
-      loadingKeys.add(key);
-      _setCardState(key,'loading');
-      return new Promise((resolve,reject)=>{ MODEL_QUEUE.push({key,filePath,resolve,reject}); processQueue(); });
+      if(failedKeys.has(key)){failedKeys.delete(key);}
+      return new Promise((resolve,reject)=>{
+        /* ลงทะเบียน callback */
+        if(!pendingCallbacks[key]) pendingCallbacks[key]=[];
+        pendingCallbacks[key].push({resolve,reject});
+
+        if(loadingKeys.has(key)) return; /* กำลังโหลดอยู่แล้ว รอ callback เฉยๆ */
+
+        const groupName=getGroupTitleByKey(key);
+        const idx=(GROUPS[groupName]||[]).indexOf(key);
+        const filePath=ITEM_PATH[key]||(groupName+'/'+(idx+1)+'.glb');
+        loadingKeys.add(key);
+        _setCardState(key,'loading');
+
+        if(priority){
+          /* ขึ้นหัวแถว — ผู้ใช้คลิก/hover เลือกแล้ว */
+          MODEL_QUEUE.unshift({key,filePath});
+        } else {
+          MODEL_QUEUE.push({key,filePath});
+        }
+        processQueue();
+      });
     }
 
     function _setCardState(key,state){
@@ -1200,10 +1226,32 @@
       if(state==='error')   card.classList.add('load-error');
     }
 
-    /* โหลดเฉพาะตัวแรกของแต่ละกลุ่ม (preload ล่วงหน้า 18 ตัว) */
-    Object.entries(GROUPS).forEach(([groupName,itemKeys])=>{
-      if(itemKeys[0]) loadModelLazy(itemKeys[0]);
-    });
+    /* ── BACKGROUND PRELOAD — โหลดโมเดลทุกตัวใน background ──
+       ตัวแรกของแต่ละกลุ่ม → โหลดทันที
+       ส่วนที่เหลือ → queue background ทีละ 4 ตัว ผ่าน requestIdleCallback  */
+    const allModelKeys = [...new Set(Object.values(GROUPS).flat())];
+    const firstOfGroup = new Set(Object.values(GROUPS).map(items=>items[0]).filter(Boolean));
+
+    firstOfGroup.forEach(key => loadModelLazy(key, false));
+
+    const scheduleBackgroundPreload = () => {
+      const remaining = allModelKeys.filter(k => !firstOfGroup.has(k));
+      let i = 0;
+      const loadNext = () => {
+        if(i >= remaining.length) return;
+        remaining.slice(i, i+4).forEach(k => loadModelLazy(k, false));
+        i += 4;
+        if(i < remaining.length){
+          if(typeof requestIdleCallback !== 'undefined'){
+            requestIdleCallback(loadNext, {timeout:800});
+          } else { setTimeout(loadNext, 300); }
+        }
+      };
+      if(typeof requestIdleCallback !== 'undefined'){
+        requestIdleCallback(loadNext, {timeout:1500});
+      } else { setTimeout(loadNext, 500); }
+    };
+    scheduleBackgroundPreload();
 
     /* ─ BUILD LEFT MENU (grid + thumbnail) ─ */
     const menu=document.getElementById('menu');
@@ -1263,19 +1311,25 @@
       const spn=document.createElement('div'); spn.className='card-spinner'; card.appendChild(spn);
       const err=document.createElement('div'); err.className='card-err'; err.textContent='⚠ โหลดไม่ได้ (แตะเพื่อลองใหม่)'; card.appendChild(err);
 
+      /* hover → เริ่มโหลดล่วงหน้าก่อนคลิก (high priority) */
+      card.addEventListener('pointerenter', () => {
+        if(!templates[key] && !loadingKeys.has(key) && !failedKeys.has(key)){
+          loadModelLazy(key, true);
+        }
+      }, { passive: true });
+
       card.addEventListener('click',()=>{
-        if(card.classList.contains('loading')) return; // รอโหลดก่อน
+        if(card.classList.contains('loading')) return;
         if(failedKeys.has(key)){
-          loadModelLazy(key); // retry
+          loadModelLazy(key, true);
           return;
         }
         if(!templates[key]){
-          // เริ่มโหลดและเลือกไว้ล่วงหน้า
           activeKey=key;
           document.getElementById('selNameDisp').textContent=label+' ⏳';
           Object.values(buttons).forEach(b=>b.classList.remove('active'));
           card.classList.add('active'); setSelected(null);
-          loadModelLazy(key).then(()=>{
+          loadModelLazy(key, true).then(()=>{
             if(activeKey===key) document.getElementById('selNameDisp').textContent=label;
           });
           return;
@@ -1421,7 +1475,7 @@
     function doPlace(ndcVec){
       if(!activeKey)return;
       if(!templates[activeKey]){
-        loadModelLazy(activeKey).then(()=>{ /* user can try placing again */ });
+        loadModelLazy(activeKey, true).then(()=>{ /* user can try placing again */ });
         return;
       }
       raycaster.setFromCamera(ndcVec,camera);
@@ -1460,11 +1514,34 @@
       return `${SUPABASE_URL}/storage/v1/object/public/${SUPABASE_BUCKET}/submission_${ts}.png`;
     }
 
-    async function logToGoogleSheets(publicUrl,info){
-      await fetch(GOOGLE_SCRIPT_URL,{
-        method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},
-        body:JSON.stringify({total:totalPlaced,summary:publicUrl,details:counts,additionalInfo:info,pageLink:location.href,googleSheetLink:GOOGLE_SHEET_LINK,cameraYawSheetLink:CAMERA_YAW_SHEET_LINK,submittedAt:new Date().toISOString()})
+    async function logToGoogleSheets(publicUrl, info){
+      const timestamp = new Date().toISOString();
+
+      /* ── Sheet 1: บันทึกจำนวนโมเดลที่เลือกทั้งหมด ── */
+      fetch(COUNTS_SHEET_URL, {
+        method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body: JSON.stringify({
+          submittedAt:  timestamp,
+          total:        totalPlaced,
+          summary:      publicUrl,
+          details:      counts,      // { 'กลุ่ม::ชื่อ': จำนวน, ... }
+          pageLink:     location.href,
+        })
       });
+
+      /* ── Sheet 2: บันทึกข้อเสนอแนะเพิ่มเติม (ส่งเฉพาะเมื่อมีข้อความ) ── */
+      if(info){
+        fetch(FEEDBACK_SHEET_URL, {
+          method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'},
+          body: JSON.stringify({
+            submittedAt:    timestamp,
+            additionalInfo: info,
+            total:          totalPlaced,
+            summary:        publicUrl,
+            pageLink:       location.href,
+          })
+        });
+      }
     }
 
     document.getElementById('btn_submit').addEventListener('click',async()=>{
