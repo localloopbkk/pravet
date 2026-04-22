@@ -202,6 +202,7 @@
         <textarea id="additionalInfo" class="extra-input" placeholder="พิมพ์ความคิดเห็นของคุณ..."></textarea>
       </div>
       <button class="ctrl accent-btn" id="btn_submit">✔ ส่งข้อมูล</button>
+      <a class="ctrl" href="gallery.html">🖼 ดูผลงานทั้งหมด</a>
       
       <button class="ctrl" id="btn_toggle_tree">🌳 ปิด ต้นไม้เดิม</button>
 
@@ -278,7 +279,8 @@
     const MODEL_BASE_URL  = SUPABASE_URL + '/storage/v1/object/public/Model_Pravet/';
     const ICON_BASE_URL   = SUPABASE_URL + '/storage/v1/object/public/Model_Pravet/Icon/';
 
-    /* ลบโค้ดลิงก์ Gsheet ออกแล้ว */
+    const GOOGLE_SHEET_LINK     = 'https://docs.google.com/spreadsheets/d/1MJIwESAxuGGwXjEZr7q7Xu9x7159SAYbDePapHdmoSs/edit?usp=sharing';
+    const CAMERA_YAW_SHEET_LINK = 'https://docs.google.com/spreadsheets/d/11TNv7OQtxeFjaMX_sUuSWH6R8Sb35GIDqsIUJs2UrVQ/edit?usp=sharing';
 
     /* ─ START SCREEN ─ */
     const startScreen = document.getElementById('startScreen');
@@ -1461,7 +1463,7 @@
     async function logToGoogleSheets(publicUrl,info){
       await fetch(GOOGLE_SCRIPT_URL,{
         method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},
-        body:JSON.stringify({total:totalPlaced,summary:publicUrl,details:counts,additionalInfo:info,pageLink:location.href,googleSheetLink:GOOGLE_SHEET_LINK,submittedAt:new Date().toISOString()})
+        body:JSON.stringify({total:totalPlaced,summary:publicUrl,details:counts,additionalInfo:info,pageLink:location.href,googleSheetLink:GOOGLE_SHEET_LINK,cameraYawSheetLink:CAMERA_YAW_SHEET_LINK,submittedAt:new Date().toISOString()})
       });
     }
 
