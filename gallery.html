@@ -96,6 +96,14 @@ canvas{width:100%;height:100%;display:block;background:linear-gradient(135deg,va
 .data-badge{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:99px;font-size:10.5px;font-weight:700;border:1px solid rgba(139,92,246,.2);}
 .data-badge.live{background:linear-gradient(135deg,#d1fae5,#a7f3d0);color:#065f46;border-color:rgba(16,185,129,.2);}
 .data-badge.mock{background:var(--lav2);color:#7c3aed;}
+.subs-wrap{margin:18px 0;padding:14px;background:white;border:1.5px solid var(--border);border-radius:var(--rad);box-shadow:var(--sh);}
+.subs-head{font-size:12px;font-weight:800;margin-bottom:10px;color:var(--text);}
+.subs-strip{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;}
+.sub-card{flex:0 0 160px;border:1.5px solid var(--border);border-radius:var(--rads);overflow:hidden;text-decoration:none;color:var(--text);background:var(--lav2);transition:transform .15s,border-color .15s;}
+.sub-card:hover{transform:translateY(-2px);border-color:var(--lav);}
+.sub-card img{display:block;width:100%;height:100px;object-fit:cover;background:#eee;}
+.sub-meta{display:flex;gap:6px;justify-content:space-between;align-items:center;padding:6px 8px;font-size:10px;}
+.sub-meta span{color:var(--muted);}
 .sheet-link{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:var(--rads);background:white;border:1.5px solid var(--border);color:var(--text);text-decoration:none;font-size:11px;font-weight:700;box-shadow:var(--sh);transition:all .15s;}
 .sheet-link:hover{background:var(--lav2);border-color:var(--lav);}
 /* MODEL COUNT TABLE */
@@ -152,6 +160,7 @@ canvas{width:100%;height:100%;display:block;background:linear-gradient(135deg,va
     </div>
     <div class="controls">
       <span id="dataModeBadge" class="data-badge mock">◌ กำลังโหลด…</span>
+      <button class="btn" id="btnReload">🔄 โหลดข้อมูลใหม่</button>
       <button class="btn primary" id="btnCSV">📥 Export CSV</button>
     </div>
   </div>
@@ -166,6 +175,11 @@ canvas{width:100%;height:100%;display:block;background:linear-gradient(135deg,va
   </section>
 
   <!-- SUGGESTIONS -->
+  <section class="subs-wrap" id="subsWrap" style="display:none;">
+    <div class="subs-head">🖼️ ภาพการส่งผลงาน <span id="subsCount"></span></div>
+    <div class="subs-strip" id="subsStrip"></div>
+  </section>
+
   <section class="sugg-wrap" id="suggWrap">
     <div class="sugg-header">
       <div>
@@ -199,6 +213,7 @@ canvas{width:100%;height:100%;display:block;background:linear-gradient(135deg,va
 ═══════════════════════════════════════════════ */
 const SHEET1_ID = "11TNv7OQtxeFjaMX_sUuSWH6R8Sb35GIDqsIUJs2UrVQ";
 const SHEET2_ID = "1MJIwESAxuGGwXjEZr7q7Xu9x7159SAYbDePapHdmoSs";
+const SHEET1_TAB = "submissions";   // tab the submission app writes to
 
 /* ═══════════════════════════════════════════════
    EMBEDDED DATA FROM SHEET 1 (JSON snapshot)
@@ -514,114 +529,190 @@ function loadEmbeddedJSON(json) {
 /* ═══════════════════════════════════════════════
    CSV PARSER
 ═══════════════════════════════════════════════ */
-function parseCSV(text) {
-  return text.trim().split(/\r?\n/).map(line => {
-    const result=[]; let f='',inQ=false;
-    for(let i=0;i<line.length;i++){
-      const ch=line[i];
-      if(ch==='"'){inQ=!inQ;}
-      else if(ch===','&&!inQ){result.push(f.trim());f='';}
-      else{f+=ch;}
+function parseCSV(text){
+  text = text.replace(/^\uFEFF/, '');
+  const rows=[]; let row=[], f='', inQ=false, i=0;
+  while(i < text.length){
+    const ch = text[i];
+    if(inQ){
+      if(ch === '"'){
+        if(text[i+1] === '"'){ f+='"'; i+=2; continue; }   // "" -> literal "
+        inQ=false; i++; continue;
+      }
+      f+=ch; i++; continue;                                 // newlines/commas kept
     }
-    result.push(f.trim()); return result;
-  });
+    if(ch === '"'){ inQ=true; i++; continue; }
+    if(ch === ','){ row.push(f); f=''; i++; continue; }
+    if(ch === '\r'){ i++; continue; }
+    if(ch === '\n'){ row.push(f); rows.push(row); row=[]; f=''; i++; continue; }
+    f+=ch; i++;
+  }
+  row.push(f); rows.push(row);
+  return rows.filter(r => r.some(c => c.trim() !== ''));
 }
 
 /* ═══════════════════════════════════════════════
-   FETCH SHEET 1 — count rows & match model names
-   Sheet has Camera_Yaw_Deg column; each row = one selection event
+   FETCH SHEET 1 — real layout
+   Each submission row stores a JSON blob mapping
+   "NN ThaiCat::ThaiVariant" -> qty placed.
+   Column order is NOT trusted (header row is stale),
+   so the blob / image / timestamp are found by content.
 ═══════════════════════════════════════════════ */
-async function fetchSheet1() {
-  try {
-    const resp = await fetch(`https://docs.google.com/spreadsheets/d/${SHEET1_ID}/export?format=csv`);
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const text = await resp.text();
+let SUBMISSIONS = [];
+let UNMAPPED_KEYS = new Set();
+let EXTRA_PLACEMENTS = 0;
+
+function sheetEndpoints(id, tab){
+  const base = `https://docs.google.com/spreadsheets/d/${id}`;
+  const urls = [];
+  if(tab) urls.push(`${base}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}`);
+  urls.push(`${base}/gviz/tq?tqx=out:csv`);
+  urls.push(`${base}/export?format=csv`);
+  return urls;
+}
+
+async function fetchCSVText(urls){
+  let lastErr = null;
+  for(const u of urls){
+    try{
+      const sep = u.includes('?') ? '&' : '?';
+      const resp = await fetch(`${u}${sep}_cb=${Date.now()}`, { cache:'no-store' });
+      if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const text = await resp.text();
+      if(/^\s*</.test(text)) throw new Error('received HTML — sheet may not be shared publicly');
+      if(text.trim()) return text;
+      throw new Error('empty response');
+    }catch(e){ lastErr = e; }
+  }
+  throw lastErr || new Error('all endpoints failed');
+}
+
+/* A cell is a selections blob if it parses as an object with "::" keys */
+function extractSelections(cell){
+  if(!cell) return null;
+  const t = cell.trim();
+  if(t.length < 2 || t[0] !== '{') return null;
+  let obj;
+  try{ obj = JSON.parse(t); }catch(e){ return null; }
+  if(!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+  if(!Object.keys(obj).some(k => k.includes('::'))) return null;
+  return obj;
+}
+
+const IMG_RE = /^https?:\/\/\S+\.(?:png|jpe?g|webp|gif)(?:\?|#|$)/i;
+const TS_RE  = /\d{1,4}[\/\-]\d{1,2}[\/\-]\d{1,4}/;
+
+function parseSubmissionRows(rows){
+  const subs = [];
+  rows.forEach(r => {
+    let sel = null;
+    for(const c of r){ const got = extractSelections(c); if(got){ sel = got; break; } }
+    if(!sel) return;                                  // header/blank/other rows skipped
+    const img = (r.find(c => IMG_RE.test((c||'').trim())) || '').trim();
+    const ts  = (r.find(c => { const v=(c||'').trim(); return v && v!==img && TS_RE.test(v); }) || '').trim();
+    subs.push({ sel, img, ts });
+  });
+  return subs;
+}
+
+/* Models that actually have a card in CATALOG. Keys present in the sheet but
+   absent here (e.g. the "18 คน" figures) are counted separately so the
+   "models selected X/Y" KPI can never exceed its own denominator. */
+const VALID_MK = new Set(CATALOG.flatMap(c => c.items.map(it => `${c.id}/${it.name}`)));
+
+function aggregateSubmissions(subs){
+  const mCounts = new Map();
+  const cCounts = new Map(CATALOG.map(c => [c.id, 0]));
+  const co = new Map();
+  let placements = 0;
+  EXTRA_PLACEMENTS = 0;
+  UNMAPPED_KEYS = new Set();
+
+  subs.forEach(sub => {
+    const cats = new Set();
+    for(const [key, raw] of Object.entries(sub.sel)){
+      const qty = Number(raw) || 0;
+      if(qty <= 0) continue;
+      const mk = THAI_TO_MK[key];
+      if(!mk){ UNMAPPED_KEYS.add(key); continue; }
+      if(!VALID_MK.has(mk)){ EXTRA_PLACEMENTS += qty; continue; }  // no card to show
+      const catId = mk.split('/')[0];
+      mCounts.set(mk, (mCounts.get(mk)||0) + qty);
+      cCounts.set(catId, (cCounts.get(catId)||0) + qty);
+      cats.add(catId);
+      placements += qty;
+    }
+    const arr = [...cats];
+    for(let i=0;i<arr.length;i++) for(let j=i+1;j<arr.length;j++){
+      const a=arr[i], b=arr[j], k = a<b ? `${a}|${b}` : `${b}|${a}`;
+      co.set(k, (co.get(k)||0) + 1);                  // real per-submission co-occurrence
+    }
+  });
+  return { mCounts, cCounts, co, placements };
+}
+
+async function fetchSheet1(){
+  try{
+    const text = await fetchCSVText(sheetEndpoints(SHEET1_ID, SHEET1_TAB));
     const rows = parseCSV(text);
-    if (rows.length < 2) throw new Error('no data');
+    const subs = parseSubmissionRows(rows);
+    if(subs.length === 0) throw new Error('no submission rows found');
 
-    const headers = rows[0].map(h=>h.trim().toLowerCase());
-    const dataRows = rows.slice(1).filter(r=>r.some(c=>c.trim()));
+    const { mCounts, cCounts, co, placements } = aggregateSubmissions(subs);
 
-    // PARTICIPANTS = total data rows (each row = one selection/interaction)
-    PARTICIPANTS = dataRows.length;
+    SUBMISSIONS  = subs;
+    modelCounts  = mCounts;
+    catCounts    = cCounts;
+    coMatrix     = co;
+    PARTICIPANTS = subs.length;      // 1 row = 1 submission
+    isLiveData   = true;
 
-    // Find model-key column: looks for "::" separator typical of Thai keys
-    let modelCol = -1;
-    headers.forEach((h,i)=>{
-      if(h.includes('model')||h.includes('โมเดล')||h.includes('ชื่อ')||h.includes('item')) modelCol=i;
-    });
-    // Also scan first data row for "::" pattern
-    if(modelCol<0 && dataRows.length>0){
-      dataRows[0].forEach((cell,i)=>{if(cell.includes('::'))modelCol=i;});
-    }
-
-    // Build new counts from live sheet
-    const liveCatCounts = new Map(CATALOG.map(c=>[c.id,0]));
-    const liveModelCounts = new Map();
-    const liveCoMatrix = new Map();
-    const participantCats = new Map();
-
-    dataRows.forEach((row,ri)=>{
-      const pid = `R${ri}`;
-      const chosenCats = new Set();
-
-      // Check all columns for model key pattern
-      row.forEach((cell,ci)=>{
-        const c = cell.trim();
-        if(!c) return;
-        // Check if matches a Thai key exactly
-        if(THAI_TO_MK[c]){
-          const mk = THAI_TO_MK[c];
-          const catId = mk.split('/')[0];
-          liveModelCounts.set(mk,(liveModelCounts.get(mk)||0)+1);
-          liveCatCounts.set(catId,(liveCatCounts.get(catId)||0)+1);
-          chosenCats.add(catId);
-        }
-        // Also check partial match
-        else if(c.includes('::')){
-          // Try to find matching key
-          const found = Object.keys(THAI_TO_MK).find(k=>k.includes(c)||c.includes(k));
-          if(found){
-            const mk = THAI_TO_MK[found];
-            const catId = mk.split('/')[0];
-            liveModelCounts.set(mk,(liveModelCounts.get(mk)||0)+1);
-            liveCatCounts.set(catId,(liveCatCounts.get(catId)||0)+1);
-            chosenCats.add(catId);
-          }
-        }
-      });
-
-      // Co-occurrence
-      const arr=[...chosenCats];
-      for(let i=0;i<arr.length;i++) for(let j=i+1;j<arr.length;j++){
-        const a=arr[i],b=arr[j],k=a<b?`${a}|${b}`:`${b}|${a}`;
-        liveCoMatrix.set(k,(liveCoMatrix.get(k)||0)+1);
-      }
-    });
-
-    // If live counts have any data, use them; else keep embedded
-    const liveTotal = [...liveModelCounts.values()].reduce((s,v)=>s+v,0);
-    if(liveTotal > 0){
-      catCounts = liveCatCounts;
-      modelCounts = liveModelCounts;
-      coMatrix = liveCoMatrix;
-    }
-    // Else keep embedded JSON counts but update PARTICIPANTS
-
-    isLiveData = true;
     updateDataBadge(true, PARTICIPANTS);
+    renderSubmissions();
+    if(UNMAPPED_KEYS.size) console.warn('Sheet keys with no THAI_TO_MK mapping:', [...UNMAPPED_KEYS]);
+    if(EXTRA_PLACEMENTS) console.info(`${EXTRA_PLACEMENTS} placements have no CATALOG card (e.g. "18 คน") — excluded from KPIs`);
+    console.log(`Sheet1 live: ${subs.length} submissions, ${placements} placements`);
     return true;
-  } catch(e) {
+  }catch(e){
     console.warn('Sheet1 fetch failed:', e.message);
-    updateDataBadge(false, PARTICIPANTS);
+    isLiveData = false;
+    loadEmbeddedJSON(SHEET1_JSON);   // fall back to the snapshot
+    updateDataBadge(false, PARTICIPANTS, e.message);
+    renderSubmissions();
     return false;
   }
 }
 
-function updateDataBadge(live, count){
+/* Thumbnail strip of submission screenshots (column with the .png URL) */
+function renderSubmissions(){
+  const wrap = document.getElementById('subsWrap');
+  const strip = document.getElementById('subsStrip');
+  if(!wrap || !strip) return;
+  if(!SUBMISSIONS.length){ wrap.style.display='none'; return; }
+  const withImg = SUBMISSIONS.filter(s => s.img);
+  if(!withImg.length){ wrap.style.display='none'; return; }
+  wrap.style.display='';
+  strip.innerHTML = withImg.map((s,i) => {
+    const qty = Object.values(s.sel).reduce((a,b)=>a+(Number(b)||0),0);
+    const ts  = (s.ts||'').replace(/</g,'&lt;');
+    return `<a class="sub-card" href="${s.img}" target="_blank" rel="noopener">
+      <img loading="lazy" src="${s.img}" alt="submission ${i+1}">
+      <div class="sub-meta"><b>#${i+1}</b><span>${ts||'—'}</span><span>${qty} ชิ้น</span></div>
+    </a>`;
+  }).join('');
+}
+
+function updateDataBadge(live, count, reason){
   const b = document.getElementById('dataModeBadge');
-  if(live){ b.className='data-badge live'; b.textContent=`● ข้อมูลจริง · ${count} แถว`; }
-  else { b.className='data-badge mock'; b.textContent=`◌ ข้อมูล Snapshot`; }
+  if(live){
+    b.className='data-badge live';
+    b.textContent=`● ข้อมูลจริง · ${count} การส่ง`;
+    b.title='Loaded live from Google Sheets';
+  } else {
+    b.className='data-badge mock';
+    b.textContent='◌ ข้อมูล Snapshot';
+    b.title = reason ? `Live load failed: ${reason}` : 'Using embedded snapshot';
+  }
 }
 
 /* ═══════════════════════════════════════════════
@@ -630,9 +721,7 @@ function updateDataBadge(live, count){
 async function fetchSheet2() {
   const listEl = document.getElementById('suggList');
   try {
-    const resp = await fetch(`https://docs.google.com/spreadsheets/d/${SHEET2_ID}/export?format=csv`);
-    if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const text = await resp.text();
+    const text = await fetchCSVText(sheetEndpoints(SHEET2_ID, null));
     const rows = parseCSV(text);
     if(rows.length<1) throw new Error('empty');
 
@@ -1017,7 +1106,7 @@ function refreshAll(q=''){
   document.getElementById('kpiS').textContent=total;
   document.getElementById('kpiSelected').textContent=`${uniqueSel}/${TOTAL_MODELS}`;
   document.getElementById('kpiCats').textContent=`${activeCats}/${CATALOG.length}`;
-  document.getElementById('brandSub').textContent=`Model_Pravet · ${PARTICIPANTS} แถว`;
+  document.getElementById('brandSub').textContent=`Model_Pravet · ${PARTICIPANTS} ${isLiveData?'การส่ง':'แถว (snapshot)'}`;
   buildNav(q);buildCatalog(q);
   if(dashWrap.style.display!=='none')buildDash();
   if(networkWrap.style.display!=='none'){buildNet();resizeCv();drawNet();}
@@ -1030,17 +1119,29 @@ window.addEventListener('resize',()=>{if(networkWrap.style.display!=='none'){res
 /* ═══════════════════════════════════════════════
    INIT
 ═══════════════════════════════════════════════ */
+async function loadLive(){
+  const badge = document.getElementById('dataModeBadge');
+  badge.className='data-badge mock'; badge.textContent='◌ กำลังโหลด…';
+  const btn = document.getElementById('btnReload');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ กำลังโหลด…'; }
+  await fetchSheet1();
+  const q = document.getElementById('searchInput').value || '';
+  refreshAll(q);
+  const c = document.getElementById('subsCount');
+  if(c) c.textContent = SUBMISSIONS.length ? `· ${SUBMISSIONS.length} รายการ` : '';
+  if(btn){ btn.disabled=false; btn.textContent='🔄 โหลดข้อมูลใหม่'; }
+}
+
+document.getElementById('btnReload').addEventListener('click', loadLive);
+
 (async()=>{
-  // 1. Load embedded JSON immediately (show real data right away)
+  // 1. Snapshot first so the page is never empty
   loadEmbeddedJSON(SHEET1_JSON);
   refreshAll('');
   showCatalog();
   updateDataBadge(false, PARTICIPANTS);
-
-  // 2. Try to fetch live Sheet 1 for updated row count + any new selections
-  const ok = await fetchSheet1();
-  refreshAll('');
-  if(ok) console.log(`✅ Sheet1 live: ${PARTICIPANTS} rows`);
+  // 2. Then overwrite with live sheet data
+  await loadLive();
 })();
 </script>
 </body>
